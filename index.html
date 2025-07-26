@@ -8,7 +8,7 @@
     <!-- Google Font: Inter -->
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     
-    <!-- **NEW**: highlight.js for syntax highlighting -->
+    <!-- highlight.js for syntax highlighting -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/atom-one-dark.min.css">
     <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
 
@@ -131,12 +131,10 @@
             <div id="versionFilesList" class="space-y-2 mb-4 max-h-64 overflow-y-auto pr-2 border p-3 rounded-lg bg-gray-50">
                 <div class="text-gray-500 text-center py-2">Chọn một phiên bản để xem các tệp của nó.</div>
             </div>
-
-            <!-- **REMOVED**: Old code viewer area is gone -->
         </section>
     </main>
 
-    <!-- **NEW**: Modal for viewing code -->
+    <!-- Modal for viewing code -->
     <div id="codeModal" class="fixed inset-0 bg-gray-900 bg-opacity-75 flex items-center justify-center hidden z-50 p-4">
         <div class="bg-gray-800 rounded-lg shadow-xl w-full max-w-4xl flex flex-col">
             <!-- Modal Header -->
@@ -178,8 +176,8 @@
     <script type="module">
         // Firebase imports...
         import { initializeApp } from "https://www.gstatic.com/firebasejs/12.0.0/firebase-app.js";
-        import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged, createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut } from "https://www.gstatic.com/firebasejs/12.0.0/firebase-auth.js";
-        import { getFirestore, collection, doc, addDoc, getDocs, getDoc, onSnapshot, query, orderBy, deleteDoc } from "https://www.gstatic.com/firebasejs/12.0.0/firebase-firestore.js";
+        import { getAuth, onAuthStateChanged, createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut } from "https://www.gstatic.com/firebasejs/12.0.0/firebase-auth.js";
+        import { getFirestore, collection, doc, addDoc, getDocs, onSnapshot, query, orderBy } from "https://www.gstatic.com/firebasejs/12.0.0/firebase-firestore.js";
 
         const firebaseConfig = {
             apiKey: "AIzaSyD7I9ZKYFTc71tFMGA2lM72ykwDuwhEV0o",
@@ -228,7 +226,7 @@
         const addFileInputBtn = document.getElementById('addFileInputBtn');
         const versionFilesList = document.getElementById('versionFilesList');
 
-        // **NEW**: Modal DOM elements
+        // Modal DOM elements
         const codeModal = document.getElementById('codeModal');
         const modalFileName = document.getElementById('modalFileName');
         const modalCodeBlock = codeModal.querySelector('code');
@@ -254,36 +252,19 @@
         }
 
         // --- Code Modal Functions ---
-        /**
-         * **NEW**: Displays the code viewer modal with highlighted code.
-         * @param {string} content - The code content to display.
-         * @param {string} filename - The name of the file.
-         */
         function showCodeInModal(content, filename) {
             modalFileName.textContent = filename;
-            modalCodeBlock.textContent = content; // Set raw text content
-            
-            // Remove any existing language class to let highlight.js auto-detect
+            modalCodeBlock.textContent = content;
             modalCodeBlock.className = 'rounded-lg'; 
-            
-            // Apply syntax highlighting
             hljs.highlightElement(modalCodeBlock);
-            
-            // Show the modal
             codeModal.classList.remove('hidden');
         }
 
-        /**
-         * **NEW**: Hides the code viewer modal.
-         */
         function hideCodeModal() {
             codeModal.classList.add('hidden');
-            modalCodeBlock.textContent = ''; // Clear content
+            modalCodeBlock.textContent = '';
         }
 
-        /**
-         * **NEW**: Copies the code from the modal to the clipboard.
-         */
         function copyCodeFromModal() {
             const codeToCopy = modalCodeBlock.textContent;
             if (!codeToCopy) {
@@ -306,7 +287,6 @@
                 showMessage('Sao chép mã thất bại.', 4000);
             }
         }
-
 
         // --- Firebase Authentication ---
         onAuthStateChanged(auth, async (user) => {
@@ -334,7 +314,7 @@
             }
         });
 
-        // Login, Register, Logout functions (handleLogin, handleRegister, handleLogout) remain the same...
+        // Login, Register, Logout functions
         async function handleRegister() {
             const email = emailInput.value.trim();
             const password = passwordInput.value.trim();
@@ -393,21 +373,31 @@
             }
             applicationsList.innerHTML = '<div class="text-gray-500 text-center py-4">Đang tải ứng dụng...</div>';
             try {
-                const q = query(getApplicationsCollectionRef(), orderBy('name'));
+                // **MODIFIED**: Order by creation time, newest first.
+                const q = query(getApplicationsCollectionRef(), orderBy('createdAt', 'desc'));
+                
                 onSnapshot(q, (snapshot) => {
                     applicationsList.innerHTML = '';
                     if (snapshot.empty) {
                         applicationsList.innerHTML = '<div class="text-gray-500 text-center py-4">Không tìm thấy ứng dụng nào.</div>';
                         return;
                     }
+
+                    // **MODIFIED**: Add a counter for numbering.
+                    let index = 1; 
                     snapshot.forEach(doc => {
                         const app = doc.data();
                         const appItem = document.createElement('div');
                         appItem.id = `app-${doc.id}`;
                         appItem.className = 'list-item bg-gray-100 hover:bg-blue-100 p-3 rounded-lg cursor-pointer transition duration-200 shadow-sm flex justify-between items-center';
-                        appItem.innerHTML = `<span class="font-medium text-gray-700">${app.name}</span>`;
+                        
+                        // **MODIFIED**: Add the number before the app name.
+                        appItem.innerHTML = `<span class="font-medium text-gray-700">${index}. ${app.name}</span>`;
+                        
                         appItem.onclick = () => selectApplication(doc.id, app.name);
                         applicationsList.appendChild(appItem);
+                        
+                        index++; // Increment the counter
                     });
                     if (currentAppId) {
                         document.getElementById(`app-${currentAppId}`)?.classList.add('bg-blue-200', 'border-blue-500', 'border-2');
@@ -478,7 +468,6 @@
                         const fileItem = document.createElement('div');
                         fileItem.className = 'list-item bg-gray-100 hover:bg-blue-100 p-2 rounded-lg cursor-pointer transition duration-200 shadow-sm text-sm';
                         fileItem.textContent = fileData.filename;
-                        // **MODIFIED**: On click, show the code in the modal
                         fileItem.onclick = () => showCodeInModal(fileData.content, fileData.filename);
                         versionFilesList.appendChild(fileItem);
                     });
@@ -491,7 +480,7 @@
             }
         }
 
-        // Multi-file input management functions (addFileInput, clearFileInputs, inferMimeType) remain the same...
+        // Multi-file input management functions
         function addFileInput() {
             fileInputCounter++;
             const fileId = `file-${fileInputCounter}`;
@@ -571,7 +560,11 @@
                 return;
             }
             try {
-                await addDoc(getApplicationsCollectionRef(), { name: appName, createdAt: Date.now() });
+                // **MODIFIED**: Ensure createdAt field is added for sorting.
+                await addDoc(getApplicationsCollectionRef(), { 
+                    name: appName, 
+                    createdAt: Date.now() 
+                });
                 showMessage(`Ứng dụng "${appName}" đã được thêm!`, 3000);
                 hideAddNewAppModal();
             } catch (error) {
@@ -602,11 +595,8 @@
         loginBtn.addEventListener('click', handleLogin);
         registerBtn.addEventListener('click', handleRegister);
         logoutBtn.addEventListener('click', handleLogout);
-
-        // **NEW**: Modal event listeners
         modalCloseBtn.addEventListener('click', hideCodeModal);
         modalCopyCodeBtn.addEventListener('click', copyCodeFromModal);
-        // Close modal if clicking on the background overlay
         codeModal.addEventListener('click', (event) => {
             if (event.target === codeModal) {
                 hideCodeModal();
