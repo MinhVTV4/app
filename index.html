@@ -418,14 +418,12 @@
 
         /**
          * Returns the Firestore collection reference for applications.
-         * Data is stored publicly under `/artifacts/{appId}/public/data/applications`.
-         * For multi-user private data, change this to `/artifacts/{appId}/users/{userId}/applications`.
+         * Data is stored privately under `/artifacts/{appId}/users/{userId}/applications`.
          * @returns {firebase.firestore.CollectionReference}
          */
         const getApplicationsCollectionRef = () => {
-            // IMPORTANT: For private user data, change this path:
-            // return collection(db, `artifacts/${canvasAppId}/users/${userId}/applications`);
-            return collection(db, `artifacts/${canvasAppId}/public/data/applications`);
+            // Changed path to store data per user
+            return collection(db, `artifacts/${canvasAppId}/users/${userId}/applications`);
         };
 
         /**
@@ -435,9 +433,8 @@
          * @returns {firebase.firestore.CollectionReference}
          */
         const getVersionsCollectionRef = (appId) => {
-            // IMPORTANT: For private user data, change this path:
-            // return collection(db, `artifacts/${canvasAppId}/users/${userId}/applications/${appId}/versions`);
-            return collection(db, `artifacts/${canvasAppId}/public/data/applications/${appId}/versions`);
+            // Changed path to store data per user
+            return collection(db, `artifacts/${canvasAppId}/users/${userId}/applications/${appId}/versions`);
         };
 
         /**
@@ -448,9 +445,8 @@
          * @returns {firebase.firestore.CollectionReference}
          */
         const getFilesCollectionRef = (appId, versionId) => {
-            // IMPORTANT: For private user data, change this path:
-            // return collection(db, `artifacts/${canvasAppId}/users/${userId}/applications/${appId}/versions/${versionId}/files`);
-            return collection(db, `artifacts/${canvasAppId}/public/data/applications/${appId}/versions/${versionId}/files`);
+            // Changed path to store data per user
+            return collection(db, `artifacts/${canvasAppId}/users/${userId}/applications/${appId}/versions/${versionId}/files`);
         };
 
         // --- UI Rendering Functions ---
