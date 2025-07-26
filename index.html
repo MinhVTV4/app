@@ -185,7 +185,7 @@
         // Global state variables
         let currentAppId = null;
         let currentAppName = null;
-        let currentVersionId = null; // **NEW**: Track the selected version ID
+        let currentVersionId = null; 
         let userId = null;
         let isAuthReady = false;
         let fileInputCounter = 0;
@@ -305,261 +305,7 @@
             }
         });
 
-        // Login, Register, Logout functions
-        async function handleRegister(){ /* ... no changes ... */ }
-        async function handleLogin(){ /* ... no changes ... */ }
-        async function handleLogout(){ /* ... no changes ... */ }
-
-        // --- Firestore Data Paths ---
-        const canvasAppId = typeof __app_id !== 'undefined' ? __app_id : 'default-version-control-app';
-        const getApplicationsCollectionRef = () => collection(db, `artifacts/${canvasAppId}/users/${userId}/applications`);
-        const getVersionsCollectionRef = (appId) => collection(db, `artifacts/${canvasAppId}/users/${userId}/applications/${appId}/versions`);
-        const getFilesCollectionRef = (appId, versionId) => collection(db, `artifacts/${canvasAppId}/users/${userId}/applications/${appId}/versions/${versionId}/files`);
-        
-        // --- **NEW**: File Inheritance Logic ---
-        /**
-         * Recursively fetches all files for a given version, inheriting from parent versions.
-         * @param {string} appId - The application ID.
-         * @param {string} versionId - The starting version ID.
-         * @returns {Promise<Map<string, object>>} A map of filenames to their file data.
-         */
-        async function getFilesForVersion(appId, versionId) {
-            const allFiles = new Map();
-            let currentId = versionId;
-
-            while (currentId) {
-                const versionDocRef = doc(db, `artifacts/${canvasAppId}/users/${userId}/applications/${appId}/versions/${currentId}`);
-                const versionSnap = await getDoc(versionDocRef);
-
-                if (!versionSnap.exists()) {
-                    break; // Stop if a version in the chain is not found
-                }
-
-                const versionData = versionSnap.data();
-                
-                // Fetch files for the current version in the chain
-                const filesQuery = query(getFilesCollectionRef(appId, currentId));
-                const filesSnapshot = await getDocs(filesQuery);
-
-                filesSnapshot.forEach(fileDoc => {
-                    const fileData = fileDoc.data();
-                    // Only add the file if it hasn't been added from a more recent version
-                    if (!allFiles.has(fileData.filename)) {
-                        allFiles.set(fileData.filename, fileData);
-                    }
-                });
-
-                // Move to the parent version
-                currentId = versionData.parentVersionId || null;
-            }
-
-            return allFiles;
-        }
-
-        // --- UI Rendering Functions ---
-        async function loadApplications() {
-            if (!isAuthReady || !userId) return;
-            applicationsList.innerHTML = '<div class="text-gray-500 text-center py-4">Đang tải ứng dụng...</div>';
-            try {
-                const q = query(getApplicationsCollectionRef(), orderBy('createdAt', 'desc'));
-                onSnapshot(q, (snapshot) => {
-                    applicationsList.innerHTML = '';
-                    if (snapshot.empty) {
-                        applicationsList.innerHTML = '<div class="text-gray-500 text-center py-4">Không tìm thấy ứng dụng nào.</div>';
-                        return;
-                    }
-                    let index = 1; 
-                    snapshot.forEach(doc => {
-                        const app = doc.data();
-                        const appItem = document.createElement('div');
-                        appItem.id = `app-${doc.id}`;
-                        appItem.className = 'list-item bg-gray-100 hover:bg-blue-100 p-3 rounded-lg cursor-pointer transition duration-200 shadow-sm flex justify-between items-center';
-                        appItem.innerHTML = `<span class="font-medium text-gray-700">${index}. ${app.name}</span>`;
-                        appItem.onclick = () => selectApplication(doc.id, app.name);
-                        applicationsList.appendChild(appItem);
-                        index++;
-                    });
-                    if (currentAppId) {
-                        document.getElementById(`app-${currentAppId}`)?.classList.add('selected');
-                    }
-                });
-            } catch (error) {
-                console.error("Error loading applications:", error);
-                applicationsList.innerHTML = '<div class="text-red-500 text-center py-4">Lỗi khi tải ứng dụng.</div>';
-            }
-        }
-
-        async function selectApplication(appId, appName) {
-            currentAppId = appId;
-            currentAppName = appName;
-            currentVersionId = null; // Reset selected version when app changes
-            currentAppNameSpan.textContent = appName;
-            document.querySelectorAll('#applicationsList > div').forEach(item => item.classList.remove('selected'));
-            document.getElementById(`app-${appId}`)?.classList.add('selected');
-            loadVersions(appId);
-            clearFileInputs();
-            versionNotesInput.value = '';
-            versionFilesList.innerHTML = '<div class="text-gray-500 text-center py-2">Chọn một phiên bản để xem các tệp của nó.</div>';
-        }
-
-        async function loadVersions(appId) {
-            if (!isAuthReady || !userId || !appId) return;
-            versionsList.innerHTML = '<div class="text-gray-500 text-center py-4">Đang tải phiên bản...</div>';
-            try {
-                const q = query(getVersionsCollectionRef(appId), orderBy('timestamp', 'desc'));
-                onSnapshot(q, (snapshot) => {
-                    versionsList.innerHTML = '';
-                    if (snapshot.empty) {
-                        versionsList.innerHTML = '<div class="text-gray-500 text-center py-4">Không tìm thấy phiên bản nào.</div>';
-                        return;
-                    }
-                    snapshot.forEach(doc => {
-                        const version = doc.data();
-                        const versionItem = document.createElement('div');
-                        versionItem.id = `version-${doc.id}`;
-                        versionItem.className = 'list-item bg-gray-100 hover:bg-blue-100 p-3 rounded-lg cursor-pointer transition duration-200 shadow-sm';
-                        const date = new Date(version.timestamp);
-                        versionItem.innerHTML = `
-                            <p class="font-medium text-gray-700">Phiên bản: ${version.versionNumber}</p>
-                            <p class="text-sm text-gray-500">${version.notes || 'Không có ghi chú'}</p>
-                            <p class="text-xs text-gray-400">${date.toLocaleString()}</p>`;
-                        versionItem.onclick = () => selectVersion(appId, doc.id);
-                        versionsList.appendChild(versionItem);
-                    });
-                    // Re-select the current version if it exists in the new list
-                    if (currentVersionId) {
-                         document.getElementById(`version-${currentVersionId}`)?.classList.add('selected');
-                    }
-                });
-            } catch (error) {
-                console.error("Error loading versions:", error);
-                versionsList.innerHTML = '<div class="text-red-500 text-center py-4">Lỗi khi tải phiên bản.</div>';
-            }
-        }
-
-        async function selectVersion(appId, versionId) {
-            if (!isAuthReady || !userId || !appId || !versionId) return;
-            
-            currentVersionId = versionId; // **MODIFIED**: Set the current version
-            
-            document.querySelectorAll('#versionsList > div').forEach(item => item.classList.remove('selected'));
-            document.getElementById(`version-${versionId}`)?.classList.add('selected');
-            
-            clearFileInputs();
-            versionFilesList.innerHTML = '<div class="text-gray-500 text-center py-2">Đang tải các tệp...</div>';
-            
-            try {
-                // **MODIFIED**: Use the new inheritance logic
-                const allFilesMap = await getFilesForVersion(appId, versionId);
-                
-                versionFilesList.innerHTML = '';
-                if (allFilesMap.size > 0) {
-                    // Sort files by name before displaying
-                    const sortedFiles = Array.from(allFilesMap.values()).sort((a, b) => a.filename.localeCompare(b.filename));
-
-                    sortedFiles.forEach(fileData => {
-                        const fileItem = document.createElement('div');
-                        fileItem.className = 'list-item bg-gray-100 hover:bg-blue-100 p-2 rounded-lg cursor-pointer transition duration-200 shadow-sm text-sm';
-                        fileItem.textContent = fileData.filename;
-                        fileItem.onclick = () => showCodeInModal(fileData.content, fileData.filename);
-                        versionFilesList.appendChild(fileItem);
-                    });
-                } else {
-                    versionFilesList.innerHTML = '<div class="text-gray-500 text-center py-2">Không tìm thấy tệp nào.</div>';
-                }
-            } catch (error) {
-                console.error("Error loading files for version:", error);
-                versionFilesList.innerHTML = '<div class="text-red-500 text-center py-2">Lỗi khi tải tệp.</div>';
-            }
-        }
-
-        // Multi-file input management functions
-        function addFileInput() { /* ... no changes ... */ }
-        function clearFileInputs() { /* ... no changes ... */ }
-
-        // --- Action Functions ---
-        async function saveVersion() {
-            if (!isAuthReady || !userId || !currentAppId) {
-                showMessage('Vui lòng chọn một ứng dụng trước khi lưu.', 3000);
-                return;
-            }
-            const filesToSave = [];
-            for (const fileId in activeFileElements) {
-                const fileGroup = activeFileElements[fileId];
-                const filename = fileGroup.querySelector('.filename-input').value.trim();
-                const content = fileGroup.querySelector('.filecontent-input').value.trim();
-                if (!filename || !content) {
-                    showMessage(`Tên tệp và nội dung không được để trống.`, 4000);
-                    return;
-                }
-                filesToSave.push({ filename, content });
-            }
-            if (filesToSave.length === 0) {
-                showMessage('Vui lòng thêm hoặc sửa ít nhất một tệp để tạo phiên bản mới.', 4000);
-                return;
-            }
-            try {
-                // **MODIFIED**: Add parentVersionId to the new version document
-                const newVersionRef = await addDoc(getVersionsCollectionRef(currentAppId), {
-                    versionNumber: `v${Date.now()}`,
-                    notes: versionNotesInput.value.trim() || 'No notes provided',
-                    timestamp: Date.now(),
-                    parentVersionId: currentVersionId // Link to the previously selected version
-                });
-
-                for (const file of filesToSave) {
-                    await addDoc(getFilesCollectionRef(currentAppId, newVersionRef.id), file);
-                }
-                showMessage('Phiên bản mới đã được lưu thành công!', 3000);
-                clearFileInputs();
-                // The onSnapshot listener on versions will automatically refresh the list.
-            } catch (error) {
-                console.error("Error saving version:", error);
-                showMessage('Lưu phiên bản thất bại.', 5000);
-            }
-        }
-
-        async function addNewApplication() {
-            if (!isAuthReady || !userId) return;
-            const appName = newAppNameInput.value.trim();
-            if (!appName) {
-                showMessage('Tên ứng dụng không được để trống.', 3000);
-                return;
-            }
-            try {
-                await addDoc(getApplicationsCollectionRef(), { 
-                    name: appName, 
-                    createdAt: Date.now() 
-                });
-                showMessage(`Ứng dụng "${appName}" đã được thêm!`, 3000);
-                hideAddNewAppModal();
-            } catch (error) {
-                console.error("Error adding new application:", error);
-                showMessage('Thêm ứng dụng mới thất bại.', 5000);
-            }
-        }
-        
-        function showAddNewAppModal() { /* ... no changes ... */ }
-        function hideAddNewAppModal() { /* ... no changes ... */ }
-
-        // --- Event Listeners ---
-        saveVersionBtn.addEventListener('click', saveVersion);
-        addNewAppBtn.addEventListener('click', showAddNewAppModal);
-        confirmNewAppBtn.addEventListener('click', addNewApplication);
-        cancelNewAppBtn.addEventListener('click', hideAddNewAppModal);
-        addFileInputBtn.addEventListener('click', addFileInput);
-        loginBtn.addEventListener('click', handleLogin);
-        registerBtn.addEventListener('click', handleRegister);
-        logoutBtn.addEventListener('click', handleLogout);
-        modalCloseBtn.addEventListener('click', hideCodeModal);
-        modalCopyCodeBtn.addEventListener('click', copyCodeFromModal);
-        codeModal.addEventListener('click', (event) => {
-            if (event.target === codeModal) {
-                hideCodeModal();
-            }
-        });
-
-        // Re-implementing unchanged functions to avoid being undefined
+        // --- Auth Functions ---
         async function handleRegister() {
             const email = emailInput.value.trim();
             const password = passwordInput.value.trim();
@@ -604,6 +350,230 @@
             }
         }
 
+        // --- Firestore Data Paths ---
+        const canvasAppId = typeof __app_id !== 'undefined' ? __app_id : 'default-version-control-app';
+        const getApplicationsCollectionRef = () => collection(db, `artifacts/${canvasAppId}/users/${userId}/applications`);
+        const getVersionsCollectionRef = (appId) => collection(db, `artifacts/${canvasAppId}/users/${userId}/applications/${appId}/versions`);
+        const getFilesCollectionRef = (appId, versionId) => collection(db, `artifacts/${canvasAppId}/users/${userId}/applications/${appId}/versions/${versionId}/files`);
+        
+        // --- File Inheritance Logic ---
+        async function getFilesForVersion(appId, versionId) {
+            const allFiles = new Map();
+            let currentId = versionId;
+
+            while (currentId) {
+                const versionDocRef = doc(db, `artifacts/${canvasAppId}/users/${userId}/applications/${appId}/versions/${currentId}`);
+                const versionSnap = await getDoc(versionDocRef);
+
+                if (!versionSnap.exists()) {
+                    break; 
+                }
+
+                const versionData = versionSnap.data();
+                
+                const filesQuery = query(getFilesCollectionRef(appId, currentId));
+                const filesSnapshot = await getDocs(filesQuery);
+
+                filesSnapshot.forEach(fileDoc => {
+                    const fileData = fileDoc.data();
+                    if (!allFiles.has(fileData.filename)) {
+                        allFiles.set(fileData.filename, fileData);
+                    }
+                });
+
+                currentId = versionData.parentVersionId || null;
+            }
+
+            return allFiles;
+        }
+
+        // --- UI Rendering Functions ---
+        async function loadApplications() {
+            if (!isAuthReady || !userId) return;
+            applicationsList.innerHTML = '<div class="text-gray-500 text-center py-4">Đang tải ứng dụng...</div>';
+            try {
+                const q = query(getApplicationsCollectionRef(), orderBy('createdAt', 'desc'));
+                onSnapshot(q, (snapshot) => {
+                    applicationsList.innerHTML = '';
+                    if (snapshot.empty) {
+                        applicationsList.innerHTML = '<div class="text-gray-500 text-center py-4">Không tìm thấy ứng dụng nào.</div>';
+                        return;
+                    }
+                    let index = 1; 
+                    snapshot.forEach(doc => {
+                        const app = doc.data();
+                        const appItem = document.createElement('div');
+                        appItem.id = `app-${doc.id}`;
+                        appItem.className = 'list-item bg-gray-100 hover:bg-blue-100 p-3 rounded-lg cursor-pointer transition duration-200 shadow-sm flex justify-between items-center';
+                        appItem.innerHTML = `<span class="font-medium text-gray-700">${index}. ${app.name}</span>`;
+                        appItem.onclick = () => selectApplication(doc.id, app.name);
+                        applicationsList.appendChild(appItem);
+                        index++;
+                    });
+                    if (currentAppId) {
+                        document.getElementById(`app-${currentAppId}`)?.classList.add('selected');
+                    }
+                });
+            } catch (error) {
+                console.error("Error loading applications:", error);
+                applicationsList.innerHTML = '<div class="text-red-500 text-center py-4">Lỗi khi tải ứng dụng.</div>';
+            }
+        }
+
+        async function selectApplication(appId, appName) {
+            currentAppId = appId;
+            currentAppName = appName;
+            currentVersionId = null; 
+            currentAppNameSpan.textContent = appName;
+            document.querySelectorAll('#applicationsList > div').forEach(item => item.classList.remove('selected'));
+            document.getElementById(`app-${appId}`)?.classList.add('selected');
+            loadVersions(appId);
+            clearFileInputs();
+            versionNotesInput.value = '';
+            versionFilesList.innerHTML = '<div class="text-gray-500 text-center py-2">Chọn một phiên bản để xem các tệp của nó.</div>';
+        }
+
+        async function loadVersions(appId) {
+            if (!isAuthReady || !userId || !appId) return;
+            versionsList.innerHTML = '<div class="text-gray-500 text-center py-4">Đang tải phiên bản...</div>';
+            try {
+                const q = query(getVersionsCollectionRef(appId), orderBy('timestamp', 'desc'));
+                onSnapshot(q, (snapshot) => {
+                    versionsList.innerHTML = '';
+                    if (snapshot.empty) {
+                        versionsList.innerHTML = '<div class="text-gray-500 text-center py-4">Không tìm thấy phiên bản nào.</div>';
+                        return;
+                    }
+                    snapshot.forEach(doc => {
+                        const version = doc.data();
+                        const versionItem = document.createElement('div');
+                        versionItem.id = `version-${doc.id}`;
+                        versionItem.className = 'list-item bg-gray-100 hover:bg-blue-100 p-3 rounded-lg cursor-pointer transition duration-200 shadow-sm';
+                        const date = new Date(version.timestamp);
+                        versionItem.innerHTML = `
+                            <p class="font-medium text-gray-700">Phiên bản: ${version.versionNumber}</p>
+                            <p class="text-sm text-gray-500">${version.notes || 'Không có ghi chú'}</p>
+                            <p class="text-xs text-gray-400">${date.toLocaleString()}</p>`;
+                        versionItem.onclick = () => selectVersion(appId, doc.id);
+                        versionsList.appendChild(versionItem);
+                    });
+                    if (currentVersionId) {
+                         document.getElementById(`version-${currentVersionId}`)?.classList.add('selected');
+                    }
+                });
+            } catch (error) {
+                console.error("Error loading versions:", error);
+                versionsList.innerHTML = '<div class="text-red-500 text-center py-4">Lỗi khi tải phiên bản.</div>';
+            }
+        }
+
+        async function selectVersion(appId, versionId) {
+            if (!isAuthReady || !userId || !appId || !versionId) return;
+            
+            currentVersionId = versionId; 
+            
+            document.querySelectorAll('#versionsList > div').forEach(item => item.classList.remove('selected'));
+            document.getElementById(`version-${versionId}`)?.classList.add('selected');
+            
+            clearFileInputs();
+            versionFilesList.innerHTML = '<div class="text-gray-500 text-center py-2">Đang tải các tệp...</div>';
+            
+            try {
+                const allFilesMap = await getFilesForVersion(appId, versionId);
+                
+                versionFilesList.innerHTML = '';
+                if (allFilesMap.size > 0) {
+                    const sortedFiles = Array.from(allFilesMap.values()).sort((a, b) => a.filename.localeCompare(b.filename));
+
+                    sortedFiles.forEach(fileData => {
+                        const fileItem = document.createElement('div');
+                        fileItem.className = 'list-item bg-gray-100 hover:bg-blue-100 p-2 rounded-lg cursor-pointer transition duration-200 shadow-sm text-sm';
+                        fileItem.textContent = fileData.filename;
+                        fileItem.onclick = () => showCodeInModal(fileData.content, fileData.filename);
+                        versionFilesList.appendChild(fileItem);
+                    });
+                } else {
+                    versionFilesList.innerHTML = '<div class="text-gray-500 text-center py-2">Không tìm thấy tệp nào.</div>';
+                }
+            } catch (error) {
+                console.error("Error loading files for version:", error);
+                versionFilesList.innerHTML = '<div class="text-red-500 text-center py-2">Lỗi khi tải tệp.</div>';
+            }
+        }
+
+        // --- Action Functions ---
+        async function saveVersion() {
+            if (!isAuthReady || !userId || !currentAppId) {
+                showMessage('Vui lòng chọn một ứng dụng trước khi lưu.', 3000);
+                return;
+            }
+            const filesToSave = [];
+            for (const fileId in activeFileElements) {
+                const fileGroup = activeFileElements[fileId];
+                const filename = fileGroup.querySelector('.filename-input').value.trim();
+                const content = fileGroup.querySelector('.filecontent-input').value.trim();
+                if (!filename || !content) {
+                    showMessage(`Tên tệp và nội dung không được để trống.`, 4000);
+                    return;
+                }
+                filesToSave.push({ filename, content });
+            }
+            if (filesToSave.length === 0) {
+                showMessage('Vui lòng thêm hoặc sửa ít nhất một tệp để tạo phiên bản mới.', 4000);
+                return;
+            }
+            try {
+                const newVersionRef = await addDoc(getVersionsCollectionRef(currentAppId), {
+                    versionNumber: `v${Date.now()}`,
+                    notes: versionNotesInput.value.trim() || 'No notes provided',
+                    timestamp: Date.now(),
+                    parentVersionId: currentVersionId 
+                });
+
+                for (const file of filesToSave) {
+                    await addDoc(getFilesCollectionRef(currentAppId, newVersionRef.id), file);
+                }
+                showMessage('Phiên bản mới đã được lưu thành công!', 3000);
+                clearFileInputs();
+            } catch (error) {
+                console.error("Error saving version:", error);
+                showMessage('Lưu phiên bản thất bại.', 5000);
+            }
+        }
+
+        async function addNewApplication() {
+            if (!isAuthReady || !userId) return;
+            const appName = newAppNameInput.value.trim();
+            if (!appName) {
+                showMessage('Tên ứng dụng không được để trống.', 3000);
+                return;
+            }
+            try {
+                await addDoc(getApplicationsCollectionRef(), { 
+                    name: appName, 
+                    createdAt: Date.now() 
+                });
+                showMessage(`Ứng dụng "${appName}" đã được thêm!`, 3000);
+                hideAddNewAppModal();
+            } catch (error) {
+                console.error("Error adding new application:", error);
+                showMessage('Thêm ứng dụng mới thất bại.', 5000);
+            }
+        }
+        
+        function showAddNewAppModal() {
+            if (!isAuthReady || !userId) {
+                showMessage('Vui lòng đăng nhập để thêm ứng dụng.', 3000);
+                return;
+            }
+            newAppNameInput.value = '';
+            addNewAppModal.classList.remove('hidden');
+        }
+
+        function hideAddNewAppModal() {
+            addNewAppModal.classList.add('hidden');
+        }
+
         function addFileInput() {
             fileInputCounter++;
             const fileId = `file-${fileInputCounter}`;
@@ -637,18 +607,22 @@
             versionNotesInput.value = '';
         }
 
-        function showAddNewAppModal() {
-            if (!isAuthReady || !userId) {
-                showMessage('Vui lòng đăng nhập để thêm ứng dụng.', 3000);
-                return;
+        // --- Event Listeners ---
+        saveVersionBtn.addEventListener('click', saveVersion);
+        addNewAppBtn.addEventListener('click', showAddNewAppModal);
+        confirmNewAppBtn.addEventListener('click', addNewApplication);
+        cancelNewAppBtn.addEventListener('click', hideAddNewAppModal);
+        addFileInputBtn.addEventListener('click', addFileInput);
+        loginBtn.addEventListener('click', handleLogin);
+        registerBtn.addEventListener('click', handleRegister);
+        logoutBtn.addEventListener('click', handleLogout);
+        modalCloseBtn.addEventListener('click', hideCodeModal);
+        modalCopyCodeBtn.addEventListener('click', copyCodeFromModal);
+        codeModal.addEventListener('click', (event) => {
+            if (event.target === codeModal) {
+                hideCodeModal();
             }
-            newAppNameInput.value = '';
-            addNewAppModal.classList.remove('hidden');
-        }
-
-        function hideAddNewAppModal() {
-            addNewAppModal.classList.add('hidden');
-        }
+        });
     </script>
 </body>
 </html>
