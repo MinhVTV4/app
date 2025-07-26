@@ -437,7 +437,8 @@
             if (!isAuthReady || !userId || !appId) return;
             versionsList.innerHTML = '<div class="text-gray-500 text-center py-4">Đang tải phiên bản...</div>';
             try {
-                const q = query(getVersionsCollectionRef(appId), orderBy('timestamp', 'desc'));
+                // **MODIFIED**: Order by the new versionIndex field, descending
+                const q = query(getVersionsCollectionRef(appId), orderBy('versionIndex', 'desc'));
                 onSnapshot(q, (snapshot) => {
                     versionsList.innerHTML = '';
                     if (snapshot.empty) {
@@ -450,8 +451,9 @@
                         versionItem.id = `version-${doc.id}`;
                         versionItem.className = 'list-item bg-gray-100 hover:bg-blue-100 p-3 rounded-lg cursor-pointer transition duration-200 shadow-sm';
                         const date = new Date(version.timestamp);
+                        // **MODIFIED**: Use versionIndex for display
                         versionItem.innerHTML = `
-                            <p class="font-medium text-gray-700">Phiên bản: ${version.versionNumber}</p>
+                            <p class="font-medium text-gray-700">Phiên bản: ${version.versionIndex}</p>
                             <p class="text-sm text-gray-500">${version.notes || 'Không có ghi chú'}</p>
                             <p class="text-xs text-gray-400">${date.toLocaleString()}</p>`;
                         versionItem.onclick = () => selectVersion(appId, doc.id);
@@ -523,8 +525,14 @@
                 return;
             }
             try {
+                // **NEW**: Get the current version count to determine the next version number
+                const versionsQuery = query(getVersionsCollectionRef(currentAppId));
+                const versionsSnapshot = await getDocs(versionsQuery);
+                const newVersionIndex = versionsSnapshot.size + 1;
+
+                // **MODIFIED**: Add versionIndex to the new version document
                 const newVersionRef = await addDoc(getVersionsCollectionRef(currentAppId), {
-                    versionNumber: `v${Date.now()}`,
+                    versionIndex: newVersionIndex,
                     notes: versionNotesInput.value.trim() || 'No notes provided',
                     timestamp: Date.now(),
                     parentVersionId: currentVersionId 
