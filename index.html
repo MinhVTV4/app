@@ -83,12 +83,16 @@
     <!-- Main Content Area (Hidden until authenticated) -->
     <main id="mainAppContent" class="flex-grow container mx-auto p-4 grid grid-cols-1 lg:grid-cols-12 gap-6 hidden">
         <!-- Left Panel: Applications List -->
-        <section class="bg-white p-6 rounded-lg shadow-md col-span-1 lg:col-span-3">
+        <section class="bg-white p-6 rounded-lg shadow-md col-span-1 lg:col-span-3 flex flex-col">
             <h2 class="text-2xl font-semibold mb-4 text-gray-800">Applications</h2>
             <button id="addNewAppBtn" class="bg-green-500 hover:bg-green-600 text-white font-bold py-2 px-4 rounded-lg shadow-md transition duration-300 mb-4 w-full">
                 Add New Application
             </button>
-            <div id="applicationsList" class="space-y-3 max-h-96 overflow-y-auto pr-2">
+            <!-- **NEW**: Search Input -->
+            <div class="my-4">
+                <input type="text" id="searchInput" placeholder="Tìm kiếm ứng dụng..." class="shadow appearance-none border rounded-lg w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline focus:border-blue-500">
+            </div>
+            <div id="applicationsList" class="space-y-3 flex-grow overflow-y-auto pr-2">
                 <div class="text-gray-500 text-center py-4">Loading applications...</div>
             </div>
         </section>
@@ -190,6 +194,7 @@
         let isAuthReady = false;
         let fileInputCounter = 0;
         let activeFileElements = {};
+        let allApps = []; // Store the full list of apps for searching
 
         // DOM element references
         const applicationsList = document.getElementById('applicationsList');
@@ -216,6 +221,7 @@
         const fileInputContainer = document.getElementById('fileInputContainer');
         const addFileInputBtn = document.getElementById('addFileInputBtn');
         const versionFilesList = document.getElementById('versionFilesList');
+        const searchInput = document.getElementById('searchInput'); // Search input element
 
         // Modal DOM elements
         const codeModal = document.getElementById('codeModal');
@@ -388,31 +394,40 @@
         }
 
         // --- UI Rendering Functions ---
+        function renderApplications(appsToRender) {
+            applicationsList.innerHTML = '';
+            if (appsToRender.length === 0) {
+                applicationsList.innerHTML = '<div class="text-gray-500 text-center py-4">Không tìm thấy ứng dụng nào.</div>';
+                return;
+            }
+            
+            let index = 1; 
+            appsToRender.forEach(appData => {
+                const appItem = document.createElement('div');
+                appItem.id = `app-${appData.id}`;
+                appItem.className = 'list-item bg-gray-100 hover:bg-blue-100 p-3 rounded-lg cursor-pointer transition duration-200 shadow-sm flex justify-between items-center';
+                appItem.innerHTML = `<span class="font-medium text-gray-700">${index}. ${appData.name}</span>`;
+                appItem.onclick = () => selectApplication(appData.id, appData.name);
+                applicationsList.appendChild(appItem);
+                index++;
+            });
+
+            if (currentAppId) {
+                const selectedElement = document.getElementById(`app-${currentAppId}`);
+                if (selectedElement) {
+                    selectedElement.classList.add('selected');
+                }
+            }
+        }
+
         async function loadApplications() {
             if (!isAuthReady || !userId) return;
             applicationsList.innerHTML = '<div class="text-gray-500 text-center py-4">Đang tải ứng dụng...</div>';
             try {
                 const q = query(getApplicationsCollectionRef(), orderBy('createdAt', 'desc'));
                 onSnapshot(q, (snapshot) => {
-                    applicationsList.innerHTML = '';
-                    if (snapshot.empty) {
-                        applicationsList.innerHTML = '<div class="text-gray-500 text-center py-4">Không tìm thấy ứng dụng nào.</div>';
-                        return;
-                    }
-                    let index = 1; 
-                    snapshot.forEach(doc => {
-                        const app = doc.data();
-                        const appItem = document.createElement('div');
-                        appItem.id = `app-${doc.id}`;
-                        appItem.className = 'list-item bg-gray-100 hover:bg-blue-100 p-3 rounded-lg cursor-pointer transition duration-200 shadow-sm flex justify-between items-center';
-                        appItem.innerHTML = `<span class="font-medium text-gray-700">${index}. ${app.name}</span>`;
-                        appItem.onclick = () => selectApplication(doc.id, app.name);
-                        applicationsList.appendChild(appItem);
-                        index++;
-                    });
-                    if (currentAppId) {
-                        document.getElementById(`app-${currentAppId}`)?.classList.add('selected');
-                    }
+                    allApps = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+                    renderApplications(allApps);
                 });
             } catch (error) {
                 console.error("Error loading applications:", error);
@@ -425,8 +440,11 @@
             currentAppName = appName;
             currentVersionId = null; 
             currentAppNameSpan.textContent = appName;
-            document.querySelectorAll('#applicationsList > div').forEach(item => item.classList.remove('selected'));
-            document.getElementById(`app-${appId}`)?.classList.add('selected');
+            
+            const searchTerm = searchInput.value.toLowerCase();
+            const filteredApps = allApps.filter(app => app.name.toLowerCase().includes(searchTerm));
+            renderApplications(filteredApps);
+
             loadVersions(appId);
             clearFileInputs();
             versionNotesInput.value = '';
@@ -437,8 +455,7 @@
             if (!isAuthReady || !userId || !appId) return;
             versionsList.innerHTML = '<div class="text-gray-500 text-center py-4">Đang tải phiên bản...</div>';
             try {
-                // **MODIFIED**: Order by the new versionIndex field, descending
-                const q = query(getVersionsCollectionRef(appId), orderBy('versionIndex', 'desc'));
+                const q = query(getVersionsCollectionRef(appId), orderBy('timestamp', 'desc'));
                 onSnapshot(q, (snapshot) => {
                     versionsList.innerHTML = '';
                     if (snapshot.empty) {
@@ -451,9 +468,8 @@
                         versionItem.id = `version-${doc.id}`;
                         versionItem.className = 'list-item bg-gray-100 hover:bg-blue-100 p-3 rounded-lg cursor-pointer transition duration-200 shadow-sm';
                         const date = new Date(version.timestamp);
-                        // **MODIFIED**: Use versionIndex for display
                         versionItem.innerHTML = `
-                            <p class="font-medium text-gray-700">Phiên bản: ${version.versionIndex}</p>
+                            <p class="font-medium text-gray-700">Phiên bản: ${version.versionIndex || 'N/A'}</p>
                             <p class="text-sm text-gray-500">${version.notes || 'Không có ghi chú'}</p>
                             <p class="text-xs text-gray-400">${date.toLocaleString()}</p>`;
                         versionItem.onclick = () => selectVersion(appId, doc.id);
@@ -525,12 +541,10 @@
                 return;
             }
             try {
-                // **NEW**: Get the current version count to determine the next version number
                 const versionsQuery = query(getVersionsCollectionRef(currentAppId));
                 const versionsSnapshot = await getDocs(versionsQuery);
                 const newVersionIndex = versionsSnapshot.size + 1;
 
-                // **MODIFIED**: Add versionIndex to the new version document
                 const newVersionRef = await addDoc(getVersionsCollectionRef(currentAppId), {
                     versionIndex: newVersionIndex,
                     notes: versionNotesInput.value.trim() || 'No notes provided',
@@ -630,6 +644,13 @@
             if (event.target === codeModal) {
                 hideCodeModal();
             }
+        });
+
+        // **NEW**: Event listener for the search input
+        searchInput.addEventListener('input', (e) => {
+            const searchTerm = e.target.value.toLowerCase();
+            const filteredApps = allApps.filter(app => app.name.toLowerCase().includes(searchTerm));
+            renderApplications(filteredApps);
         });
     </script>
 </body>
